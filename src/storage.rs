@@ -30,18 +30,31 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
     }
 
     pub fn scan(&mut self) -> Option<Slot> {
-        // TODO: implement the actual scan logic
+        let mut current: Option<Slot> = None;
         let mut buf = [0u8; Slot::HEADER_SIZE];
+
         for idx in 0..SLOT_COUNT {
             self.flash.read(self.addr(idx), &mut buf);
             let slot = Slot::from_bytes(idx, buf);
-            if slot.chksum.is_valid() {
-                // Set to the next valid slot
-                self.idx = slot.next_slot::<SLOT_SIZE, SLOT_COUNT>();
-                return Some(slot);
+            if !slot.chksum.is_valid() {
+                continue;
+            }
+
+            if let Some(existing) = &current {
+                if slot.is_update_to(&existing) {
+                    current = Some(slot);
+                }
+            } else {
+                current = Some(slot);
             }
         }
-        None
+
+        if let Some(current) = &current {
+            self.idx = current.next_slot::<SLOT_SIZE, SLOT_COUNT>();
+            self.prev = current.chksum;
+        }
+
+        current
     }
 
     pub fn erase(&mut self, idx: usize) {
@@ -81,9 +94,15 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         Some(data)
     }
 
-    pub fn write(&mut self, mut idx: usize, prev: Option<Chksum>, mut data: &[u8]) -> usize {
+    pub fn write(
+        &mut self,
+        mut idx: usize,
+        prev: Option<Chksum>,
+        mut data: &[u8],
+    ) -> (usize, Chksum) {
         let prev = prev.unwrap_or(Chksum::zero());
         let slot = Slot::create(idx, prev, data);
+        let chksum = slot.chksum;
         let addr = self.addr(idx);
         let bytes = slot.to_bytes();
         self.flash.erase(addr);
@@ -108,11 +127,13 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
             remaining_space = SLOT_SIZE - 1;
         }
 
-        idx
+        (idx, chksum)
     }
 
     pub fn append(&mut self, data: &[u8]) {
-        self.idx = self.write(self.idx, Some(self.prev), data);
+        let (idx, chksum) = self.write(self.idx, Some(self.prev), data);
+        self.idx = idx;
+        self.prev = chksum;
     }
 }
 
@@ -226,7 +247,7 @@ mod tests {
 
     fn test_storage_write_wrap_around<F: Flash>(mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>) {
         for num in 0..(SLOT_COUNT as u32 * 3 + 2) {
-            let mut buf = [0u8; 16];
+            let mut buf = [0u8; 6];
             num.to_le_bytes().iter().enumerate().for_each(|(i, b)| {
                 buf[i] = *b;
             });
@@ -234,10 +255,12 @@ mod tests {
         }
 
         let slot = storage.scan().unwrap();
-        assert_eq!(slot.idx, 2);
+        assert_eq!(slot.idx, 1);
+        assert_eq!(storage.idx, 2);
+
         let mut buf = [0u8; 32];
         let slice = storage.read(slot.idx, &mut buf);
-        assert_eq!(slice, Some(&mut [0, 0, 0][..]));
+        assert_eq!(slice, Some(&mut [25, 0, 0, 0, 0, 0][..]));
     }
 
     #[test]
@@ -305,6 +328,7 @@ mod tests {
 
         storage.scan();
         assert_eq!(storage.idx, 3);
+        assert_eq!(storage.prev, Chksum::hash(&big));
     }
 
     #[test]
