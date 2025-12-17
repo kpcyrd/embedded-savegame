@@ -1,4 +1,4 @@
-use crate::{Slot, chksum::Chksum};
+use crate::{Slot, chksum::{self, Chksum}};
 
 pub trait Flash {
     type Error: core::error::Error;
@@ -32,16 +32,35 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         ((idx % SLOT_COUNT) * SLOT_SIZE) as u32
     }
 
+    fn scan_slot(&mut self, idx: usize) -> Result<Option<Slot>, F::Error> {
+        let mut buf = [0u8; Slot::HEADER_SIZE];
+        let (head, tail) = buf.split_at_mut(1);
+
+        // Read first byte for sanity check to allow early skip
+        let addr = self.addr(idx);
+        self.flash.read(addr, head)?;
+
+        if head[0] & chksum::BYTE_MASK != 0 {
+            return Ok(None);
+        }
+
+        // Read the rest of the header
+        let addr = addr.saturating_add(1);
+        self.flash.read(addr, tail)?;
+
+        // Parse and validate slot
+        let slot = Slot::from_bytes(idx, buf);
+        let slot = slot.is_valid().then_some(slot);
+        Ok(slot)
+    }
+
     pub fn scan(&mut self) -> Result<Option<Slot>, F::Error> {
         let mut current: Option<Slot> = None;
-        let mut buf = [0u8; Slot::HEADER_SIZE];
 
         for idx in 0..SLOT_COUNT {
-            self.flash.read(self.addr(idx), &mut buf)?;
-            let slot = Slot::from_bytes(idx, buf);
-            if !slot.is_valid() {
+            let Some(slot) = self.scan_slot(idx)? else {
                 continue;
-            }
+            };
 
             if let Some(existing) = &current {
                 if slot.is_update_to(&existing) {

@@ -1,7 +1,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Chksum(u32);
 
-pub const MASK: u32 = u32::MAX >> 1;
+pub const CHKSUM_MASK: u32 = u32::MAX >> 1;
+pub const BYTE_MASK: u8 = !(u8::MAX >> 1); // 0x80
 
 impl Chksum {
     pub const SIZE: usize = u32::BITS as usize / 8;
@@ -13,11 +14,11 @@ impl Chksum {
     pub fn hash(data: &[u8]) -> Self {
         let mut hasher = crc32fast::Hasher::new();
         hasher.update(data);
-        Self(hasher.finalize() & MASK)
+        Self(hasher.finalize() & CHKSUM_MASK)
     }
 
     pub fn is_valid(&self) -> bool {
-        let value = self.0 & !MASK;
+        let value = self.0 & !CHKSUM_MASK;
         value == 0
     }
 
