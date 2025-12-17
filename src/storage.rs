@@ -8,6 +8,7 @@ pub trait Flash {
     fn erase(&mut self, addr: u32);
 }
 
+#[derive(Debug)]
 pub struct Storage<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> {
     flash: F,
     prev: Chksum,
@@ -36,7 +37,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         for idx in 0..SLOT_COUNT {
             self.flash.read(self.addr(idx), &mut buf);
             let slot = Slot::from_bytes(idx, buf);
-            if !slot.chksum.is_valid() {
+            if !slot.is_valid() {
                 continue;
             }
 
@@ -111,19 +112,22 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         let mut addr = addr.saturating_add(Slot::HEADER_SIZE as u32);
         let mut remaining_space = SLOT_SIZE - Slot::HEADER_SIZE;
 
-        while !data.is_empty() {
+        loop {
             let write_size = remaining_space.min(data.len());
             let (to_write, remaining) = data.split_at(write_size);
             self.flash.write(addr, to_write);
             data = remaining;
-
             idx = idx.saturating_add(1) % SLOT_COUNT;
-            // TODO: erase first byte of next slot, but only if more data remains
-            /*
+
+            // erase first byte of next slot, but only if more data remains
+            if data.is_empty() {
+                break;
+            }
+
             addr = self.addr(idx);
             self.flash.erase(addr);
-            */
-            addr = self.addr(idx).saturating_add(1);
+
+            addr = addr.saturating_add(1);
             remaining_space = SLOT_SIZE - 1;
         }
 
@@ -248,7 +252,7 @@ mod tests {
     fn test_storage_write_wrap_around<F: Flash>(mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>) {
         for num in 0..(SLOT_COUNT as u32 * 3 + 2) {
             let mut buf = [0u8; 6];
-            num.to_le_bytes().iter().enumerate().for_each(|(i, b)| {
+            num.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
                 buf[i] = *b;
             });
             storage.append(&buf);
@@ -260,7 +264,7 @@ mod tests {
 
         let mut buf = [0u8; 32];
         let slice = storage.read(slot.idx, &mut buf);
-        assert_eq!(slice, Some(&mut [25, 0, 0, 0, 0, 0][..]));
+        assert_eq!(slice, Some(&mut [0, 0, 0, 25, 0, 0][..]));
     }
 
     #[test]
@@ -299,7 +303,7 @@ mod tests {
         assert_eq!(
             new_slot,
             Slot {
-                idx: 77, // TODO
+                idx: 6,
                 prev: slot.chksum,
                 chksum: Chksum::hash(&buf),
                 len: buf.len() as u32,

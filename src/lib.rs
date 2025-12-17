@@ -31,6 +31,10 @@ impl Slot {
         }
     }
 
+    pub fn is_valid(&self) -> bool {
+        self.prev.is_valid() && self.chksum.is_valid()
+    }
+
     pub fn is_update_to(&self, other: &Self) -> bool {
         self.prev == other.chksum
     }
@@ -72,7 +76,7 @@ impl Slot {
         dest.copy_from_slice(&self.chksum.to_bytes());
 
         let (dest, _slice) = slice.split_at_mut(4);
-        dest.copy_from_slice(&self.len.to_le_bytes());
+        dest.copy_from_slice(&self.len.to_be_bytes());
 
         buf
     }
@@ -88,7 +92,7 @@ impl Slot {
         let chksum = Chksum::from_bytes(chksum_bytes.try_into().unwrap());
 
         let (len_bytes, _slice) = slice.split_at(4);
-        let len = u32::from_le_bytes(len_bytes.try_into().unwrap());
+        let len = u32::from_be_bytes(len_bytes.try_into().unwrap());
 
         Self {
             idx,
@@ -109,12 +113,12 @@ mod tests {
     #[test]
     fn test_slot_to_bytes() {
         let slot = Slot::create(0, Chksum::zero(), b"hello");
-        assert_eq!(slot.to_bytes(), [0, 0, 0, 0, 134, 166, 16, 54, 5, 0, 0, 0]);
+        assert_eq!(slot.to_bytes(), [0, 0, 0, 0, 54, 16, 166, 134, 0, 0, 0, 5,]);
 
         let append = Slot::create(1, slot.chksum, b"world");
         assert_eq!(
             append.to_bytes(),
-            [134, 166, 16, 54, 67, 17, 119, 58, 5, 0, 0, 0]
+            [54, 16, 166, 134, 58, 119, 17, 67, 0, 0, 0, 5]
         );
     }
 

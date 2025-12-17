@@ -1,5 +1,6 @@
 use crate::storage::Flash;
 
+#[derive(Debug)]
 pub struct MockFlash<const SIZE: usize> {
     data: [u8; SIZE],
 }
@@ -28,6 +29,7 @@ impl<const SIZE: usize> Flash for MockFlash<SIZE> {
     }
 }
 
+#[derive(Debug)]
 pub struct SectorMockFlash<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize> {
     data: [[u8; SECTOR_SIZE]; SECTOR_COUNT],
 }
