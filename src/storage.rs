@@ -29,14 +29,15 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         ((idx % SLOT_COUNT) * SLOT_SIZE) as u32
     }
 
-    pub fn scan(&self) -> Option<Slot> {
+    pub fn scan(&mut self) -> Option<Slot> {
         // TODO: implement the actual scan logic
         let mut buf = [0u8; Slot::HEADER_SIZE];
         for idx in 0..SLOT_COUNT {
             self.flash.read(self.addr(idx), &mut buf);
             let slot = Slot::from_bytes(idx, buf);
             if slot.chksum.is_valid() {
-                // TODO: set .idx properly (according to slot.len)
+                // Set to the next valid slot
+                self.idx = slot.next_slot::<SLOT_SIZE, SLOT_COUNT>();
                 return Some(slot);
             }
         }
@@ -118,7 +119,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock::MockFlash;
+    use crate::mock::{MockFlash, SectorMockFlash};
 
     const SLOT_SIZE: usize = 64;
     const SLOT_COUNT: usize = 8;
@@ -129,11 +130,27 @@ mod tests {
         Storage::<_, SLOT_SIZE, SLOT_COUNT>::new(flash)
     }
 
-    #[test]
-    fn test_storage_empty_scan() {
-        let flash = mock_storage();
-        let slot = flash.scan();
+    const fn mock_sector_storage()
+    -> Storage<SectorMockFlash<SLOT_SIZE, SLOT_COUNT>, SLOT_SIZE, SLOT_COUNT> {
+        let flash = SectorMockFlash::<SLOT_SIZE, SLOT_COUNT>::new();
+        Storage::<_, SLOT_SIZE, SLOT_COUNT>::new(flash)
+    }
+
+    fn test_storage_empty_scan<F: Flash>(mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>) {
+        let slot = storage.scan();
         assert_eq!(slot, None);
+    }
+
+    #[test]
+    fn test_at24cxx_storage_empty_scan() {
+        let storage = mock_storage();
+        test_storage_empty_scan(storage);
+    }
+
+    #[test]
+    fn test_w25qxx_storage_empty_scan() {
+        let storage = mock_sector_storage();
+        test_storage_empty_scan(storage);
     }
 
     #[test]
@@ -157,10 +174,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_storage_write_scan() {
-        let mut storage = mock_storage();
-
+    fn test_storage_write_scan<F: Flash>(mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>) {
         let data = b"hello world";
         storage.append(data);
 
@@ -177,9 +191,18 @@ mod tests {
     }
 
     #[test]
-    fn test_storage_write_read() {
-        let mut storage = mock_storage();
+    fn test_at24cxx_storage_write_scan() {
+        let storage = mock_storage();
+        test_storage_write_scan(storage);
+    }
 
+    #[test]
+    fn test_w25qxx_storage_write_scan() {
+        let storage = mock_sector_storage();
+        test_storage_write_scan(storage);
+    }
+
+    fn test_storage_write_read<F: Flash>(mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>) {
         let data = b"hello world";
         storage.append(data);
 
@@ -187,5 +210,112 @@ mod tests {
         let slice = storage.read(0, &mut buf);
 
         assert_eq!(slice.map(|s| &*s), Some("hello world".as_bytes()));
+    }
+
+    #[test]
+    fn test_at24cxx_storage_write_read() {
+        let storage = mock_storage();
+        test_storage_write_read(storage);
+    }
+
+    #[test]
+    fn test_w25qxx_storage_write_read() {
+        let storage = mock_sector_storage();
+        test_storage_write_read(storage);
+    }
+
+    fn test_storage_write_wrap_around<F: Flash>(mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>) {
+        for num in 0..(SLOT_COUNT as u32 * 3 + 2) {
+            let mut buf = [0u8; 16];
+            num.to_le_bytes().iter().enumerate().for_each(|(i, b)| {
+                buf[i] = *b;
+            });
+            storage.append(&buf);
+        }
+
+        let slot = storage.scan().unwrap();
+        assert_eq!(slot.idx, 2);
+        let mut buf = [0u8; 32];
+        let slice = storage.read(slot.idx, &mut buf);
+        assert_eq!(slice, Some(&mut [0, 0, 0][..]));
+    }
+
+    #[test]
+    fn test_at24cxx_storage_write_wrap_around() {
+        let storage = mock_storage();
+        test_storage_write_wrap_around(storage);
+    }
+
+    #[test]
+    fn test_w25qxx_storage_write_wrap_around() {
+        let storage = mock_sector_storage();
+        test_storage_write_wrap_around(storage);
+    }
+
+    fn test_storage_big_write<F: Flash>(mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>) {
+        let buf = [b'A'; SLOT_SIZE * 5];
+        storage.append(&buf);
+        let slot = storage.scan().unwrap();
+        assert_eq!(
+            slot,
+            Slot {
+                idx: 0,
+                prev: Chksum::zero(),
+                chksum: Chksum::hash(&buf),
+                len: buf.len() as u32,
+            }
+        );
+
+        let mut buf2 = [0u8; 512];
+        let slice = storage.read(slot.idx, &mut buf2);
+        assert_eq!(slice.map(|s| &*s), Some(&buf[..]));
+
+        let buf = [b'B'; SLOT_SIZE * 5];
+        storage.append(&buf);
+        let new_slot = storage.scan().unwrap();
+        assert_eq!(
+            new_slot,
+            Slot {
+                idx: 77, // TODO
+                prev: slot.chksum,
+                chksum: Chksum::hash(&buf),
+                len: buf.len() as u32,
+            }
+        );
+        // TODO: this test is also broken because it's parsing the content of a slot as header
+    }
+
+    #[test]
+    fn test_at24cxx_storage_big_write() {
+        let storage = mock_storage();
+        test_storage_big_write(storage);
+    }
+
+    #[test]
+    fn test_w25qxx_storage_big_write() {
+        let storage = mock_sector_storage();
+        test_storage_big_write(storage);
+    }
+
+    fn test_append_after_scan<F: Flash>(mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>) {
+        let big = [b'A'; SLOT_SIZE * 2];
+        storage.append(&big);
+        assert_eq!(storage.idx, 3);
+        storage.idx = 0;
+
+        storage.scan();
+        assert_eq!(storage.idx, 3);
+    }
+
+    #[test]
+    fn test_at24cxx_append_after_scan() {
+        let storage = mock_storage();
+        test_append_after_scan(storage);
+    }
+
+    #[test]
+    fn test_w25qxx_append_after_scan() {
+        let storage = mock_sector_storage();
+        test_append_after_scan(storage);
     }
 }

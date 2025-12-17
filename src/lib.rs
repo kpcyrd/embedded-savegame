@@ -35,6 +35,32 @@ impl Slot {
         self.prev == other.chksum
     }
 
+    pub fn used_bytes<const SLOT_SIZE: usize>(&self) -> usize {
+        let mut size = Self::HEADER_SIZE;
+        let mut remaining_data = self.len as usize;
+        let mut remaining_space = SLOT_SIZE - Self::HEADER_SIZE;
+
+        loop {
+            let this_round = remaining_space.min(remaining_data);
+            size = size.saturating_add(this_round);
+            remaining_data = remaining_data.saturating_sub(this_round);
+
+            if remaining_data == 0 {
+                break;
+            }
+
+            size = size.saturating_add(1); // for the next slot's header byte
+            remaining_space = SLOT_SIZE - 1;
+        }
+
+        size
+    }
+
+    pub fn next_slot<const SLOT_SIZE: usize, const SLOT_COUNT: usize>(&self) -> usize {
+        let used_slots = self.used_bytes::<SLOT_SIZE>().div_ceil(SLOT_SIZE);
+        self.idx.saturating_add(used_slots) % SLOT_COUNT
+    }
+
     pub fn to_bytes(&self) -> [u8; Self::HEADER_SIZE] {
         let mut buf = [0u8; Self::HEADER_SIZE];
         let slice = &mut buf[..];
@@ -77,6 +103,9 @@ impl Slot {
 mod tests {
     use super::*;
 
+    const SLOT_SIZE: usize = 64;
+    const SLOT_COUNT: usize = 8;
+
     #[test]
     fn test_slot_to_bytes() {
         let slot = Slot::create(0, Chksum::zero(), b"hello");
@@ -87,5 +116,44 @@ mod tests {
             append.to_bytes(),
             [134, 166, 16, 54, 67, 17, 119, 58, 5, 0, 0, 0]
         );
+    }
+
+    #[test]
+    fn test_slot_size_small() {
+        let slot = Slot::create(0, Chksum::zero(), b"ohai!");
+        assert_eq!(slot.used_bytes::<SLOT_SIZE>(), Slot::HEADER_SIZE + 5);
+        assert_eq!(slot.next_slot::<SLOT_SIZE, SLOT_COUNT>(), 1);
+    }
+
+    #[test]
+    fn test_slot_size_full() {
+        let bytes = [b'B'; SLOT_SIZE - Slot::HEADER_SIZE];
+        let slot = Slot::create(0, Chksum::zero(), &bytes);
+        assert_eq!(slot.used_bytes::<SLOT_SIZE>(), SLOT_SIZE);
+        assert_eq!(slot.next_slot::<SLOT_SIZE, SLOT_COUNT>(), 1);
+    }
+
+    #[test]
+    fn test_slot_spill_over() {
+        let bytes = [b'B'; SLOT_SIZE];
+        let slot = Slot::create(0, Chksum::zero(), &bytes);
+        assert_eq!(
+            slot.used_bytes::<SLOT_SIZE>(),
+            // One extra because the continue-header
+            Slot::HEADER_SIZE + SLOT_SIZE + 1,
+        );
+        assert_eq!(slot.next_slot::<SLOT_SIZE, SLOT_COUNT>(), 2);
+    }
+
+    #[test]
+    fn test_slot_spill_over_twice() {
+        let bytes = [b'B'; SLOT_SIZE * 2];
+        let slot = Slot::create(0, Chksum::zero(), &bytes);
+        assert_eq!(
+            slot.used_bytes::<SLOT_SIZE>(),
+            // Two extra because the continue-header
+            Slot::HEADER_SIZE + SLOT_SIZE * 2 + 2,
+        );
+        assert_eq!(slot.next_slot::<SLOT_SIZE, SLOT_COUNT>(), 3);
     }
 }
