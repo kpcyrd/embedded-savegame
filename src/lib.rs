@@ -1,6 +1,8 @@
 #![no_std]
 
 pub mod chksum;
+#[cfg(feature = "eeprom24x")]
+pub mod eeprom24x;
 #[cfg(test)]
 pub mod mock;
 pub mod storage;

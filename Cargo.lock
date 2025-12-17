@@ -18,8 +18,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "eeprom24x"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f7a31bca283ff29097bb5e7c0dbdb39fbe165dda33b825e19f8ac04f15a8eef"
+dependencies = [
+ "embedded-hal",
+ "embedded-storage",
+]
+
+[[package]]
+name = "embedded-hal"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
+
+[[package]]
 name = "embedded-savegame"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "eeprom24x",
 ]
+
+[[package]]
+name = "embedded-storage"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a21dea9854beb860f3062d10228ce9b976da520a73474aed3171ec276bc0c032"

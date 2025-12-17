@@ -12,7 +12,7 @@ impl<const SIZE: usize> MockFlash<SIZE> {
 }
 
 impl<const SIZE: usize> Flash for MockFlash<SIZE> {
-    fn read(&self, addr: u32, buf: &mut [u8]) {
+    fn read(&mut self, addr: u32, buf: &mut [u8]) {
         let addr = addr as usize;
         let len = buf.len();
         buf.copy_from_slice(&self.data[addr..addr + len]);
@@ -54,7 +54,7 @@ impl<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize>
 impl<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize> Flash
     for SectorMockFlash<SECTOR_SIZE, SECTOR_COUNT>
 {
-    fn read(&self, addr: u32, buf: &mut [u8]) {
+    fn read(&mut self, addr: u32, buf: &mut [u8]) {
         let (sector, offset) = Self::div_rem(addr);
         buf.copy_from_slice(&self.data[sector][offset..offset + buf.len()]);
     }

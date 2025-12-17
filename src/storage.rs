@@ -1,11 +1,13 @@
 use crate::{Slot, chksum::Chksum};
 
 pub trait Flash {
-    fn read(&self, addr: u32, buf: &mut [u8]);
+    type Error;
 
-    fn write(&mut self, addr: u32, data: &[u8]);
+    fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error>;
 
-    fn erase(&mut self, addr: u32);
+    fn write(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error>;
+
+    fn erase(&mut self, addr: u32) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug)]
@@ -30,12 +32,12 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         ((idx % SLOT_COUNT) * SLOT_SIZE) as u32
     }
 
-    pub fn scan(&mut self) -> Option<Slot> {
+    pub fn scan(&mut self) -> Result<Option<Slot>, F::Error> {
         let mut current: Option<Slot> = None;
         let mut buf = [0u8; Slot::HEADER_SIZE];
 
         for idx in 0..SLOT_COUNT {
-            self.flash.read(self.addr(idx), &mut buf);
+            self.flash.read(self.addr(idx), &mut buf)?;
             let slot = Slot::from_bytes(idx, buf);
             if !slot.is_valid() {
                 continue;
@@ -55,34 +57,42 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
             self.prev = current.chksum;
         }
 
-        current
+        Ok(current)
     }
 
-    pub fn erase(&mut self, idx: usize) {
-        self.flash.erase(self.addr(idx));
+    pub fn erase(&mut self, idx: usize) -> Result<(), F::Error> {
+        self.flash.erase(self.addr(idx))?;
+        Ok(())
     }
 
-    pub fn erase_all(&mut self) {
+    pub fn erase_all(&mut self) -> Result<(), F::Error> {
         // TODO: some flash chips have a better way to do bulk erase
         for idx in 0..SLOT_COUNT {
-            self.erase(idx);
+            self.erase(idx)?;
         }
+        Ok(())
     }
 
-    pub fn read<'a>(&self, mut idx: usize, buf: &'a mut [u8]) -> Option<&'a mut [u8]> {
+    pub fn read<'a>(
+        &mut self,
+        mut idx: usize,
+        buf: &'a mut [u8],
+    ) -> Result<Option<&'a mut [u8]>, F::Error> {
         let mut addr = self.addr(idx);
         let mut slot = [0u8; Slot::HEADER_SIZE];
-        self.flash.read(addr, &mut slot);
+        self.flash.read(addr, &mut slot)?;
         addr = addr.saturating_add(Slot::HEADER_SIZE as u32);
         let slot = Slot::from_bytes(idx, slot);
 
-        let data = buf.get_mut(..slot.len as usize)?;
+        let Some(data) = buf.get_mut(..slot.len as usize) else {
+            return Ok(None);
+        };
         let mut buf = &mut *data;
         let mut remaining_space = SLOT_SIZE - Slot::HEADER_SIZE;
         while !buf.is_empty() {
             let read_size = remaining_space.min(buf.len());
             let (to_read, remaining) = buf.split_at_mut(read_size);
-            self.flash.read(addr, to_read);
+            self.flash.read(addr, to_read)?;
             buf = remaining;
 
             idx = idx.saturating_add(1) % SLOT_COUNT;
@@ -92,7 +102,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
 
         // TODO: validate checksum
 
-        Some(data)
+        Ok(Some(data))
     }
 
     pub fn write(
@@ -100,14 +110,14 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         mut idx: usize,
         prev: Option<Chksum>,
         mut data: &[u8],
-    ) -> (usize, Chksum) {
+    ) -> Result<(usize, Chksum), F::Error> {
         let prev = prev.unwrap_or(Chksum::zero());
         let slot = Slot::create(idx, prev, data);
         let chksum = slot.chksum;
         let addr = self.addr(idx);
         let bytes = slot.to_bytes();
-        self.flash.erase(addr);
-        self.flash.write(addr, &bytes);
+        self.flash.erase(addr)?;
+        self.flash.write(addr, &bytes)?;
 
         let mut addr = addr.saturating_add(Slot::HEADER_SIZE as u32);
         let mut remaining_space = SLOT_SIZE - Slot::HEADER_SIZE;
@@ -115,7 +125,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         loop {
             let write_size = remaining_space.min(data.len());
             let (to_write, remaining) = data.split_at(write_size);
-            self.flash.write(addr, to_write);
+            self.flash.write(addr, to_write)?;
             data = remaining;
             idx = idx.saturating_add(1) % SLOT_COUNT;
 
@@ -125,19 +135,20 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
             }
 
             addr = self.addr(idx);
-            self.flash.erase(addr);
+            self.flash.erase(addr)?;
 
             addr = addr.saturating_add(1);
             remaining_space = SLOT_SIZE - 1;
         }
 
-        (idx, chksum)
+        Ok((idx, chksum))
     }
 
-    pub fn append(&mut self, data: &[u8]) {
-        let (idx, chksum) = self.write(self.idx, Some(self.prev), data);
+    pub fn append(&mut self, data: &[u8]) -> Result<(), F::Error> {
+        let (idx, chksum) = self.write(self.idx, Some(self.prev), data)?;
         self.idx = idx;
         self.prev = chksum;
+        Ok(())
     }
 }
 
