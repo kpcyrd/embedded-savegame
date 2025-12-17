@@ -23,7 +23,7 @@ impl Slot {
     pub const HEADER_SIZE: usize = Chksum::SIZE * 2 + 4;
 
     pub fn create(idx: usize, prev: Chksum, data: &[u8]) -> Self {
-        let chksum = Chksum::hash(data);
+        let chksum = Chksum::hash(prev, data);
         let len = data.len() as u32;
         Self {
             idx,
@@ -115,12 +115,12 @@ mod tests {
     #[test]
     fn test_slot_to_bytes() {
         let slot = Slot::create(0, Chksum::zero(), b"hello");
-        assert_eq!(slot.to_bytes(), [0, 0, 0, 0, 54, 16, 166, 134, 0, 0, 0, 5,]);
+        assert_eq!(slot.to_bytes(), [0, 0, 0, 0, 22, 59, 69, 53, 0, 0, 0, 5,]);
 
         let append = Slot::create(1, slot.chksum, b"world");
         assert_eq!(
             append.to_bytes(),
-            [54, 16, 166, 134, 58, 119, 17, 67, 0, 0, 0, 5]
+            [22, 59, 69, 53, 95, 165, 74, 224, 0, 0, 0, 5]
         );
     }
 

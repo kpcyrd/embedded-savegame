@@ -1,4 +1,7 @@
-use crate::{Slot, chksum::{self, Chksum}};
+use crate::{
+    Slot,
+    chksum::{self, Chksum},
+};
 
 pub trait Flash {
     type Error: core::error::Error;
@@ -226,7 +229,7 @@ mod tests {
             Slot {
                 idx: 0,
                 prev: Chksum::zero(),
-                chksum: Chksum::hash(data),
+                chksum: Chksum::hash(Chksum::zero(), data),
                 len: data.len() as u32,
             }
         );
@@ -244,7 +247,7 @@ mod tests {
             Some(Slot {
                 idx: 0,
                 prev: Chksum::zero(),
-                chksum: Chksum::hash(data),
+                chksum: Chksum::hash(Chksum::zero(), data),
                 len: data.len() as u32,
             })
         );
@@ -329,7 +332,7 @@ mod tests {
             Slot {
                 idx: 0,
                 prev: Chksum::zero(),
-                chksum: Chksum::hash(&buf),
+                chksum: Chksum::hash(Chksum::zero(), &buf),
                 len: buf.len() as u32,
             }
         );
@@ -346,7 +349,7 @@ mod tests {
             Slot {
                 idx: 6,
                 prev: slot.chksum,
-                chksum: Chksum::hash(&buf),
+                chksum: Chksum::hash(slot.chksum, &buf),
                 len: buf.len() as u32,
             }
         );
@@ -375,7 +378,7 @@ mod tests {
 
         storage.scan().unwrap();
         assert_eq!(storage.idx, 3);
-        assert_eq!(storage.prev, Chksum::hash(&big));
+        assert_eq!(storage.prev, Chksum::hash(Chksum::zero(), &big));
     }
 
     #[test]

@@ -11,8 +11,9 @@ impl Chksum {
         Self(0)
     }
 
-    pub fn hash(data: &[u8]) -> Self {
+    pub fn hash(prev: Chksum, data: &[u8]) -> Self {
         let mut hasher = crc32fast::Hasher::new();
+        hasher.update(&prev.to_bytes());
         hasher.update(data);
         Self(hasher.finalize() & CHKSUM_MASK)
     }
@@ -38,8 +39,8 @@ mod tests {
     #[test]
     fn test_chksum() {
         let data = b"hello world";
-        let chksum = Chksum::hash(data);
-        assert_eq!(chksum, Chksum(222957957));
+        let chksum = Chksum::hash(Chksum::zero(), data);
+        assert_eq!(chksum, Chksum(824091534));
         assert!(chksum.is_valid());
     }
 
