@@ -3,7 +3,7 @@
 pub mod chksum;
 #[cfg(feature = "eeprom24x")]
 pub mod eeprom24x;
-#[cfg(test)]
+#[cfg(any(test, feature = "mock"))]
 pub mod mock;
 pub mod storage;
 
