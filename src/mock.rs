@@ -1,4 +1,5 @@
 use crate::storage::Flash;
+use core::convert::Infallible;
 
 #[derive(Debug)]
 pub struct MockFlash<const SIZE: usize> {
@@ -12,20 +13,25 @@ impl<const SIZE: usize> MockFlash<SIZE> {
 }
 
 impl<const SIZE: usize> Flash for MockFlash<SIZE> {
-    fn read(&mut self, addr: u32, buf: &mut [u8]) {
+    type Error = Infallible;
+
+    fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
         let addr = addr as usize;
         let len = buf.len();
         buf.copy_from_slice(&self.data[addr..addr + len]);
+        Ok(())
     }
 
-    fn write(&mut self, addr: u32, data: &[u8]) {
+    fn write(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error> {
         let addr = addr as usize;
         let len = data.len();
         self.data[addr..addr + len].copy_from_slice(data);
+        Ok(())
     }
 
-    fn erase(&mut self, addr: u32) {
+    fn erase(&mut self, addr: u32) -> Result<(), Self::Error> {
         self.data[addr as usize] = 0xFF;
+        Ok(())
     }
 }
 
@@ -54,12 +60,15 @@ impl<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize>
 impl<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize> Flash
     for SectorMockFlash<SECTOR_SIZE, SECTOR_COUNT>
 {
-    fn read(&mut self, addr: u32, buf: &mut [u8]) {
+    type Error = Infallible;
+
+    fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
         let (sector, offset) = Self::div_rem(addr);
         buf.copy_from_slice(&self.data[sector][offset..offset + buf.len()]);
+        Ok(())
     }
 
-    fn write(&mut self, addr: u32, buf: &[u8]) {
+    fn write(&mut self, addr: u32, buf: &[u8]) -> Result<(), Self::Error> {
         let (sector, offset) = Self::div_rem(addr);
 
         let mut flash = self.data[sector][offset..offset + buf.len()].iter_mut();
@@ -67,10 +76,13 @@ impl<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize> Flash
             let flash_byte = flash.next().unwrap();
             *flash_byte &= *byte;
         }
+
+        Ok(())
     }
 
-    fn erase(&mut self, addr: u32) {
+    fn erase(&mut self, addr: u32) -> Result<(), Self::Error> {
         let (sector, _offset) = Self::div_rem(addr);
         self.data[sector] = [0xFF; SECTOR_SIZE];
+        Ok(())
     }
 }
