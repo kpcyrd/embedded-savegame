@@ -7,7 +7,10 @@ edition = "2024"
 arrayref = "0.3.9"
 crc32fast = { version = "1.5.0", default-features = false }
 eeprom24x = { version = "0.7.2", optional = true }
+eh0 = { package = "embedded-hal", version = "0.2.7", optional = true }
+w25q = { version = "0.2.9", optional = true }
 
 [features]
 eeprom24x = ["dep:eeprom24x"]
 mock = []
+w25q = ["dep:w25q", "dep:eh0"]

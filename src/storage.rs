@@ -4,11 +4,12 @@ use crate::{
 };
 
 pub trait Flash {
-    type Error: core::error::Error;
+    type Error;
 
     fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error>;
 
-    fn write(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error>;
+    // XXX: The w25q crate requires data to be mutable for write operations
+    fn write(&mut self, addr: u32, data: &mut [u8]) -> Result<(), Self::Error>;
 
     fn erase(&mut self, addr: u32) -> Result<(), Self::Error>;
 }
@@ -131,21 +132,21 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         &mut self,
         mut idx: usize,
         prev: Chksum,
-        mut data: &[u8],
+        mut data: &mut [u8],
     ) -> Result<(usize, Chksum), F::Error> {
         let slot = Slot::create(idx, prev, data);
         let chksum = slot.chksum;
         let addr = self.addr(idx);
-        let bytes = slot.to_bytes();
+        let mut bytes = slot.to_bytes();
         self.flash.erase(addr)?;
-        self.flash.write(addr, &bytes)?;
+        self.flash.write(addr, &mut bytes)?;
 
         let mut addr = addr.saturating_add(Slot::HEADER_SIZE as u32);
         let mut remaining_space = SLOT_SIZE - Slot::HEADER_SIZE;
 
         loop {
             let write_size = remaining_space.min(data.len());
-            let (to_write, remaining) = data.split_at(write_size);
+            let (to_write, remaining) = data.split_at_mut(write_size);
             self.flash.write(addr, to_write)?;
             data = remaining;
             idx = idx.saturating_add(1) % SLOT_COUNT;
@@ -165,7 +166,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         Ok((idx, chksum))
     }
 
-    pub fn append(&mut self, data: &[u8]) -> Result<(), F::Error> {
+    pub fn append(&mut self, data: &mut [u8]) -> Result<(), F::Error> {
         let (idx, chksum) = self.write(self.idx, self.prev, data)?;
         self.idx = idx;
         self.prev = chksum;
@@ -217,8 +218,8 @@ mod tests {
     fn test_storage_write() {
         let mut storage = mock_storage();
 
-        let data = b"hello world";
-        storage.append(data);
+        let mut data = *b"hello world";
+        storage.append(&mut data);
 
         let mut buf = [0u8; Slot::HEADER_SIZE];
         storage.flash.read(0, &mut buf);
@@ -228,7 +229,7 @@ mod tests {
             Slot {
                 idx: 0,
                 prev: Chksum::zero(),
-                chksum: Chksum::hash(Chksum::zero(), data),
+                chksum: Chksum::hash(Chksum::zero(), &data),
                 len: data.len() as u32,
             }
         );
@@ -237,8 +238,8 @@ mod tests {
     fn test_storage_write_scan<F: Flash<Error = Infallible>>(
         mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
-        let data = b"hello world";
-        storage.append(data);
+        let mut data = *b"hello world";
+        storage.append(&mut data);
 
         let Ok(scan) = storage.scan();
         assert_eq!(
@@ -246,7 +247,7 @@ mod tests {
             Some(Slot {
                 idx: 0,
                 prev: Chksum::zero(),
-                chksum: Chksum::hash(Chksum::zero(), data),
+                chksum: Chksum::hash(Chksum::zero(), &data),
                 len: data.len() as u32,
             })
         );
@@ -267,8 +268,8 @@ mod tests {
     fn test_storage_write_read<F: Flash<Error = Infallible>>(
         mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
-        let data = b"hello world";
-        storage.append(data);
+        let mut data = *b"hello world";
+        storage.append(&mut data);
 
         let mut buf = [0u8; 1024];
         let Ok(slice) = storage.read(0, &mut buf);
@@ -296,7 +297,7 @@ mod tests {
             num.to_be_bytes().iter().enumerate().for_each(|(i, b)| {
                 buf[i] = *b;
             });
-            storage.append(&buf);
+            storage.append(&mut buf);
         }
 
         let slot = storage.scan().unwrap().unwrap();
@@ -323,8 +324,8 @@ mod tests {
     fn test_storage_big_write<F: Flash<Error = Infallible>>(
         mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
-        let buf = [b'A'; SLOT_SIZE * 5];
-        storage.append(&buf);
+        let mut buf = [b'A'; SLOT_SIZE * 5];
+        storage.append(&mut buf);
         let slot = storage.scan().unwrap().unwrap();
         assert_eq!(
             slot,
@@ -340,8 +341,8 @@ mod tests {
         let Ok(slice) = storage.read(slot.idx, &mut buf2);
         assert_eq!(slice.map(|s| &*s), Some(&buf[..]));
 
-        let buf = [b'B'; SLOT_SIZE * 5];
-        storage.append(&buf);
+        let mut buf = [b'B'; SLOT_SIZE * 5];
+        storage.append(&mut buf);
         let new_slot = storage.scan().unwrap().unwrap();
         assert_eq!(
             new_slot,
@@ -370,8 +371,8 @@ mod tests {
     fn test_append_after_scan<F: Flash<Error = Infallible>>(
         mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
-        let big = [b'A'; SLOT_SIZE * 2];
-        storage.append(&big);
+        let mut big = [b'A'; SLOT_SIZE * 2];
+        storage.append(&mut big);
         assert_eq!(storage.idx, 3);
         storage.idx = 0;
 

@@ -1,24 +1,22 @@
 use crate::storage::Flash;
-use eeprom24x::Eeprom24xTrait;
+use eh0::blocking::spi::Transfer;
+use eh0::digital::v2::OutputPin;
 
-impl<T: Eeprom24xTrait> Flash for T
-where
-    <T as Eeprom24xTrait>::Error: From<eeprom24x::Error<<T as Eeprom24xTrait>::Error>>,
-{
-    type Error = T::Error;
+impl<SPI: Transfer<u8>, CS: OutputPin> Flash for w25q::series25::Flash<SPI, CS> {
+    type Error = w25q::Error<SPI, CS>;
 
     fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
-        self.read_data(addr, buf)?;
+        w25q::series25::Flash::read(self, addr, buf)?;
         Ok(())
     }
 
     fn write(&mut self, addr: u32, data: &mut [u8]) -> Result<(), Self::Error> {
-        self.write_page(addr, data)?;
+        self.write_bytes(addr, data)?;
         Ok(())
     }
 
     fn erase(&mut self, addr: u32) -> Result<(), Self::Error> {
-        self.write_byte(addr, 0xFF)?;
+        self.erase_sectors(addr, 1)?;
         Ok(())
     }
 }

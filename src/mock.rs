@@ -28,7 +28,7 @@ impl<const SIZE: usize> Flash for MockFlash<SIZE> {
         Ok(())
     }
 
-    fn write(&mut self, addr: u32, data: &[u8]) -> Result<(), Self::Error> {
+    fn write(&mut self, addr: u32, data: &mut [u8]) -> Result<(), Self::Error> {
         let addr = addr as usize;
         let len = data.len();
         self.data[addr..addr + len].copy_from_slice(data);
@@ -82,7 +82,7 @@ impl<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize> Flash
         Ok(())
     }
 
-    fn write(&mut self, addr: u32, buf: &[u8]) -> Result<(), Self::Error> {
+    fn write(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
         let (sector, offset) = Self::div_rem(addr);
 
         let mut flash = self.data[sector][offset..offset + buf.len()].iter_mut();

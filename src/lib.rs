@@ -6,6 +6,8 @@ pub mod eeprom24x;
 #[cfg(any(test, feature = "mock"))]
 pub mod mock;
 pub mod storage;
+#[cfg(feature = "w25q")]
+pub mod w25q;
 
 use crate::chksum::Chksum;
 
