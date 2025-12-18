@@ -11,32 +11,34 @@ pub mod w25q;
 
 use crate::chksum::Chksum;
 
+const LENGTH_SIZE: usize = 4;
+
 #[derive(Debug, PartialEq)]
 pub struct Slot {
     pub idx: usize,
-    pub prev: Chksum,
     pub chksum: Chksum,
     pub len: u32,
+    pub prev: Chksum,
 }
 
 impl Slot {
     /// Two checksums and one length field.
     /// The first byte of the checksum is also used to tell if the slot is in use.
-    pub const HEADER_SIZE: usize = Chksum::SIZE * 2 + 4;
+    pub const HEADER_SIZE: usize = Chksum::SIZE * 2 + LENGTH_SIZE;
 
     pub fn create(idx: usize, prev: Chksum, data: &[u8]) -> Self {
         let chksum = Chksum::hash(prev, data);
         let len = data.len() as u32;
         Self {
             idx,
-            prev,
             chksum,
             len,
+            prev,
         }
     }
 
     pub fn is_valid(&self) -> bool {
-        self.prev.is_valid() && self.chksum.is_valid()
+        self.chksum.is_valid() && self.prev.is_valid()
     }
 
     pub fn is_update_to(&self, other: &Self) -> bool {
@@ -74,25 +76,26 @@ impl Slot {
         let slice = &mut buf[..];
 
         let (dest, slice) = slice.split_at_mut(Chksum::SIZE);
-        dest.copy_from_slice(&self.prev.to_bytes());
-
-        let (dest, slice) = slice.split_at_mut(Chksum::SIZE);
         dest.copy_from_slice(&self.chksum.to_bytes());
 
-        let (dest, _slice) = slice.split_at_mut(4);
+        let (dest, slice) = slice.split_at_mut(LENGTH_SIZE);
         dest.copy_from_slice(&self.len.to_be_bytes());
+
+        let (dest, _slice) = slice.split_at_mut(Chksum::SIZE);
+        dest.copy_from_slice(&self.prev.to_bytes());
 
         buf
     }
 
     pub fn from_bytes(idx: usize, bytes: [u8; Self::HEADER_SIZE]) -> Self {
-        let (prev, chksum, len) = arrayref::array_refs![&bytes, Chksum::SIZE, Chksum::SIZE, 4];
+        let (chksum, len, prev) =
+            arrayref::array_refs![&bytes, Chksum::SIZE, LENGTH_SIZE, Chksum::SIZE];
 
         Self {
             idx,
-            prev: Chksum::from_bytes(*prev),
             chksum: Chksum::from_bytes(*chksum),
             len: u32::from_be_bytes(*len),
+            prev: Chksum::from_bytes(*prev),
         }
     }
 }
@@ -107,12 +110,12 @@ mod tests {
     #[test]
     fn test_slot_to_bytes() {
         let slot = Slot::create(0, Chksum::zero(), b"hello");
-        assert_eq!(slot.to_bytes(), [0, 0, 0, 0, 22, 59, 69, 53, 0, 0, 0, 5,]);
+        assert_eq!(slot.to_bytes(), [22, 59, 69, 53, 0, 0, 0, 5, 0, 0, 0, 0]);
 
         let append = Slot::create(1, slot.chksum, b"world");
         assert_eq!(
             append.to_bytes(),
-            [22, 59, 69, 53, 95, 165, 74, 224, 0, 0, 0, 5]
+            [95, 165, 74, 224, 0, 0, 0, 5, 22, 59, 69, 53]
         );
     }
 

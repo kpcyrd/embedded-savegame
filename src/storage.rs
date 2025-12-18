@@ -228,9 +228,9 @@ mod tests {
             slot,
             Slot {
                 idx: 0,
-                prev: Chksum::zero(),
                 chksum: Chksum::hash(Chksum::zero(), &data),
                 len: data.len() as u32,
+                prev: Chksum::zero(),
             }
         );
     }
@@ -246,9 +246,9 @@ mod tests {
             scan,
             Some(Slot {
                 idx: 0,
-                prev: Chksum::zero(),
                 chksum: Chksum::hash(Chksum::zero(), &data),
                 len: data.len() as u32,
+                prev: Chksum::zero(),
             })
         );
     }
@@ -331,9 +331,9 @@ mod tests {
             slot,
             Slot {
                 idx: 0,
-                prev: Chksum::zero(),
                 chksum: Chksum::hash(Chksum::zero(), &buf),
                 len: buf.len() as u32,
+                prev: Chksum::zero(),
             }
         );
 
@@ -348,9 +348,9 @@ mod tests {
             new_slot,
             Slot {
                 idx: 6,
-                prev: slot.chksum,
                 chksum: Chksum::hash(slot.chksum, &buf),
                 len: buf.len() as u32,
+                prev: slot.chksum,
             }
         );
         // TODO: this test is also broken because it's parsing the content of a slot as header
