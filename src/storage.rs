@@ -66,7 +66,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
             };
 
             if let Some(existing) = &current {
-                if slot.is_update_to(&existing) {
+                if slot.is_update_to(existing) {
                     current = Some(slot);
                 }
             } else {

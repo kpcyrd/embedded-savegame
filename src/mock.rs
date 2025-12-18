@@ -12,6 +12,12 @@ impl<const SIZE: usize> MockFlash<SIZE> {
     }
 }
 
+impl<const SIZE: usize> Default for MockFlash<SIZE> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const SIZE: usize> Flash for MockFlash<SIZE> {
     type Error = Infallible;
 
@@ -54,6 +60,14 @@ impl<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize>
         let sector = addr / SECTOR_SIZE;
         let offset = addr % SECTOR_SIZE;
         (sector, offset)
+    }
+}
+
+impl<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize> Default
+    for SectorMockFlash<SECTOR_SIZE, SECTOR_COUNT>
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 
