@@ -84,23 +84,13 @@ impl Slot {
     }
 
     pub fn from_bytes(idx: usize, bytes: [u8; Self::HEADER_SIZE]) -> Self {
-        // TODO: try to get rid of the unwraps
-        let slice = &bytes[..];
-
-        let (prev_bytes, slice) = slice.split_at(Chksum::SIZE);
-        let prev = Chksum::from_bytes(prev_bytes.try_into().unwrap());
-
-        let (chksum_bytes, slice) = slice.split_at(Chksum::SIZE);
-        let chksum = Chksum::from_bytes(chksum_bytes.try_into().unwrap());
-
-        let (len_bytes, _slice) = slice.split_at(4);
-        let len = u32::from_be_bytes(len_bytes.try_into().unwrap());
+        let (prev, chksum, len) = arrayref::array_refs![&bytes, Chksum::SIZE, Chksum::SIZE, 4];
 
         Self {
             idx,
-            prev,
-            chksum,
-            len,
+            prev: Chksum::from_bytes(*prev),
+            chksum: Chksum::from_bytes(*chksum),
+            len: u32::from_be_bytes(*len),
         }
     }
 }
