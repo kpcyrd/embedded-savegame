@@ -135,13 +135,10 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         mut data: &mut [u8],
     ) -> Result<(usize, Chksum), F::Error> {
         let slot = Slot::create(idx, prev, data);
-        let chksum = slot.chksum;
-        let addr = self.addr(idx);
-        let mut bytes = slot.to_bytes();
-        self.flash.erase(addr)?;
-        self.flash.write(addr, &mut bytes)?;
+        let slot_addr = self.addr(idx);
+        self.flash.erase(slot_addr)?;
 
-        let mut addr = addr.saturating_add(Slot::HEADER_SIZE as u32);
+        let mut addr = slot_addr.saturating_add(Slot::HEADER_SIZE as u32);
         let mut remaining_space = SLOT_SIZE - Slot::HEADER_SIZE;
 
         loop {
@@ -163,7 +160,12 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
             remaining_space = SLOT_SIZE - 1;
         }
 
-        Ok((idx, chksum))
+        // Write header last, to finalize the slot
+        // The last field is `prev`, marking the previous slot as outdated
+        let mut bytes = slot.to_bytes();
+        self.flash.write(slot_addr, &mut bytes)?;
+
+        Ok((idx, slot.chksum))
     }
 
     pub fn append(&mut self, data: &mut [u8]) -> Result<(), F::Error> {
