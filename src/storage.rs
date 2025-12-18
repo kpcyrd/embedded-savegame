@@ -130,10 +130,9 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
     pub fn write(
         &mut self,
         mut idx: usize,
-        prev: Option<Chksum>,
+        prev: Chksum,
         mut data: &[u8],
     ) -> Result<(usize, Chksum), F::Error> {
-        let prev = prev.unwrap_or(Chksum::zero());
         let slot = Slot::create(idx, prev, data);
         let chksum = slot.chksum;
         let addr = self.addr(idx);
@@ -167,7 +166,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
     }
 
     pub fn append(&mut self, data: &[u8]) -> Result<(), F::Error> {
-        let (idx, chksum) = self.write(self.idx, Some(self.prev), data)?;
+        let (idx, chksum) = self.write(self.idx, self.prev, data)?;
         self.idx = idx;
         self.prev = chksum;
         Ok(())
