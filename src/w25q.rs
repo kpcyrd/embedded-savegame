@@ -19,4 +19,8 @@ impl<SPI: Transfer<u8>, CS: OutputPin> Flash for w25q::series25::Flash<SPI, CS> 
         self.erase_sectors(addr, 1)?;
         Ok(())
     }
+
+    fn erase_all(&mut self, _count: usize) -> Result<(), Self::Error> {
+        w25q::series25::Flash::erase_all(self)
+    }
 }

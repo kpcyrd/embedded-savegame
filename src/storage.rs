@@ -12,6 +12,15 @@ pub trait Flash {
     fn write(&mut self, addr: u32, data: &mut [u8]) -> Result<(), Self::Error>;
 
     fn erase(&mut self, addr: u32) -> Result<(), Self::Error>;
+
+    /// Some flash chips have a better way to do bulk erase
+    /// Default implementation erases all sectors one by one
+    fn erase_all(&mut self, count: usize) -> Result<(), Self::Error> {
+        for idx in 0..count {
+            self.erase(idx as u32)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -89,11 +98,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
     }
 
     pub fn erase_all(&mut self) -> Result<(), F::Error> {
-        // TODO: some flash chips have a better way to do bulk erase
-        for idx in 0..SLOT_COUNT {
-            self.erase(idx)?;
-        }
-        Ok(())
+        self.flash.erase_all(SLOT_COUNT)
     }
 
     pub fn read<'a>(
