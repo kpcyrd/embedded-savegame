@@ -1,11 +1,8 @@
 use crate::storage::Flash;
 use eeprom24x::Eeprom24xTrait;
 
-impl<T: Eeprom24xTrait> Flash for T
-where
-    <T as Eeprom24xTrait>::Error: From<eeprom24x::Error<<T as Eeprom24xTrait>::Error>>,
-{
-    type Error = T::Error;
+impl<T: Eeprom24xTrait> Flash for T {
+    type Error = eeprom24x::Error<T::Error>;
 
     fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
         self.read_data(addr, buf)?;
