@@ -1,6 +1,6 @@
 [package]
 name = "embedded-savegame"
-version = "0.1.0"
+version = "0.2.0"
 description = "Savegame library for embedded with powerfail-safety and wear leveling"
 repository = "https://github.com/kpcyrd/embedded-savegame"
 authors = ["kpcyrd <git@rxv.cc>"]
