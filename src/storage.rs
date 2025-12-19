@@ -2,9 +2,10 @@ use crate::{
     Slot,
     chksum::{self, Chksum},
 };
+use core::fmt;
 
 pub trait Flash {
-    type Error;
+    type Error: fmt::Debug;
 
     fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error>;
 
