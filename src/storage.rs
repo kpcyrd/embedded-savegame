@@ -184,7 +184,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock::{MockFlash, SectorMockFlash};
+    use crate::mock::{MeasuredMockFlash, MeasuredStats, MockFlash, SectorMockFlash};
     use core::convert::Infallible;
 
     const SLOT_SIZE: usize = 64;
@@ -202,8 +202,13 @@ mod tests {
         Storage::<_, SLOT_SIZE, SLOT_COUNT>::new(flash)
     }
 
+    fn mock_measured_storage() -> Storage<MeasuredMockFlash<SIZE>, SLOT_SIZE, SLOT_COUNT> {
+        let flash = MeasuredMockFlash::<SIZE>::new();
+        Storage::<_, SLOT_SIZE, SLOT_COUNT>::new(flash)
+    }
+
     fn test_storage_empty_scan<F: Flash<Error = Infallible>>(
-        mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
+        storage: &mut Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
         let Ok(slot) = storage.scan();
         assert_eq!(slot, None);
@@ -211,14 +216,28 @@ mod tests {
 
     #[test]
     fn test_at24cxx_storage_empty_scan() {
-        let storage = mock_storage();
-        test_storage_empty_scan(storage);
+        let mut storage = mock_storage();
+        test_storage_empty_scan(&mut storage);
     }
 
     #[test]
     fn test_w25qxx_storage_empty_scan() {
-        let storage = mock_sector_storage();
-        test_storage_empty_scan(storage);
+        let mut storage = mock_sector_storage();
+        test_storage_empty_scan(&mut storage);
+    }
+
+    #[test]
+    fn test_measured_storage_empty_scan() {
+        let mut storage = mock_measured_storage();
+        test_storage_empty_scan(&mut storage);
+        assert_eq!(
+            storage.flash.stats,
+            MeasuredStats {
+                read: 8,
+                write: 0,
+                erase: 0,
+            }
+        );
     }
 
     #[test]
@@ -243,7 +262,7 @@ mod tests {
     }
 
     fn test_storage_write_scan<F: Flash<Error = Infallible>>(
-        mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
+        storage: &mut Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
         let mut data = *b"hello world";
         storage.append(&mut data);
@@ -262,18 +281,32 @@ mod tests {
 
     #[test]
     fn test_at24cxx_storage_write_scan() {
-        let storage = mock_storage();
-        test_storage_write_scan(storage);
+        let mut storage = mock_storage();
+        test_storage_write_scan(&mut storage);
     }
 
     #[test]
     fn test_w25qxx_storage_write_scan() {
-        let storage = mock_sector_storage();
-        test_storage_write_scan(storage);
+        let mut storage = mock_sector_storage();
+        test_storage_write_scan(&mut storage);
+    }
+
+    #[test]
+    fn test_measured_storage_write_scan() {
+        let mut storage = mock_measured_storage();
+        test_storage_write_scan(&mut storage);
+        assert_eq!(
+            storage.flash.stats,
+            MeasuredStats {
+                read: 19,
+                write: 23,
+                erase: 1,
+            }
+        );
     }
 
     fn test_storage_write_read<F: Flash<Error = Infallible>>(
-        mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
+        storage: &mut Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
         let mut data = *b"hello world";
         storage.append(&mut data);
@@ -286,18 +319,32 @@ mod tests {
 
     #[test]
     fn test_at24cxx_storage_write_read() {
-        let storage = mock_storage();
-        test_storage_write_read(storage);
+        let mut storage = mock_storage();
+        test_storage_write_read(&mut storage);
     }
 
     #[test]
     fn test_w25qxx_storage_write_read() {
-        let storage = mock_sector_storage();
-        test_storage_write_read(storage);
+        let mut storage = mock_sector_storage();
+        test_storage_write_read(&mut storage);
+    }
+
+    #[test]
+    fn test_measured_storage_write_read() {
+        let mut storage = mock_measured_storage();
+        test_storage_write_read(&mut storage);
+        assert_eq!(
+            storage.flash.stats,
+            MeasuredStats {
+                read: 23,
+                write: 23,
+                erase: 1,
+            }
+        );
     }
 
     fn test_storage_write_wrap_around<F: Flash<Error = Infallible>>(
-        mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
+        storage: &mut Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
         for num in 0..(SLOT_COUNT as u32 * 3 + 2) {
             let mut buf = [0u8; 6];
@@ -318,18 +365,32 @@ mod tests {
 
     #[test]
     fn test_at24cxx_storage_write_wrap_around() {
-        let storage = mock_storage();
-        test_storage_write_wrap_around(storage);
+        let mut storage = mock_storage();
+        test_storage_write_wrap_around(&mut storage);
     }
 
     #[test]
     fn test_w25qxx_storage_write_wrap_around() {
-        let storage = mock_sector_storage();
-        test_storage_write_wrap_around(storage);
+        let mut storage = mock_sector_storage();
+        test_storage_write_wrap_around(&mut storage);
+    }
+
+    #[test]
+    fn test_measured_storage_write_wrap_around() {
+        let mut storage = mock_measured_storage();
+        test_storage_write_wrap_around(&mut storage);
+        assert_eq!(
+            storage.flash.stats,
+            MeasuredStats {
+                read: 114,
+                write: 468,
+                erase: 26,
+            }
+        );
     }
 
     fn test_storage_big_write<F: Flash<Error = Infallible>>(
-        mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
+        storage: &mut Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
         let mut buf = [b'A'; SLOT_SIZE * 5];
         storage.append(&mut buf);
@@ -360,23 +421,36 @@ mod tests {
                 prev: slot.chksum,
             }
         );
-        // TODO: this test is also broken because it's parsing the content of a slot as header
     }
 
     #[test]
     fn test_at24cxx_storage_big_write() {
-        let storage = mock_storage();
-        test_storage_big_write(storage);
+        let mut storage = mock_storage();
+        test_storage_big_write(&mut storage);
     }
 
     #[test]
     fn test_w25qxx_storage_big_write() {
-        let storage = mock_sector_storage();
-        test_storage_big_write(storage);
+        let mut storage = mock_sector_storage();
+        test_storage_big_write(&mut storage);
+    }
+
+    #[test]
+    fn test_measured_storage_big_write() {
+        let mut storage = mock_measured_storage();
+        test_storage_big_write(&mut storage);
+        assert_eq!(
+            storage.flash.stats,
+            MeasuredStats {
+                read: 370,
+                write: 664,
+                erase: 12,
+            }
+        );
     }
 
     fn test_append_after_scan<F: Flash<Error = Infallible>>(
-        mut storage: Storage<F, SLOT_SIZE, SLOT_COUNT>,
+        storage: &mut Storage<F, SLOT_SIZE, SLOT_COUNT>,
     ) {
         let mut big = [b'A'; SLOT_SIZE * 2];
         storage.append(&mut big);
@@ -390,13 +464,27 @@ mod tests {
 
     #[test]
     fn test_at24cxx_append_after_scan() {
-        let storage = mock_storage();
-        test_append_after_scan(storage);
+        let mut storage = mock_storage();
+        test_append_after_scan(&mut storage);
     }
 
     #[test]
     fn test_w25qxx_append_after_scan() {
-        let storage = mock_sector_storage();
-        test_append_after_scan(storage);
+        let mut storage = mock_sector_storage();
+        test_append_after_scan(&mut storage);
+    }
+
+    #[test]
+    fn test_measured_append_after_scan() {
+        let mut storage = mock_measured_storage();
+        test_append_after_scan(&mut storage);
+        assert_eq!(
+            storage.flash.stats,
+            MeasuredStats {
+                read: 19,
+                write: 140,
+                erase: 3,
+            }
+        );
     }
 }

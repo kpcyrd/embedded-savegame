@@ -100,3 +100,41 @@ impl<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize> Flash
         Ok(())
     }
 }
+
+#[derive(Debug, Default)]
+pub struct MeasuredMockFlash<const SIZE: usize> {
+    flash: MockFlash<SIZE>,
+    pub stats: MeasuredStats,
+}
+
+#[derive(Debug, Default, PartialEq)]
+pub struct MeasuredStats {
+    pub read: usize,
+    pub write: usize,
+    pub erase: usize,
+}
+
+impl<const SIZE: usize> MeasuredMockFlash<SIZE> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl<const SIZE: usize> Flash for MeasuredMockFlash<SIZE> {
+    type Error = Infallible;
+
+    fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error> {
+        self.stats.read = self.stats.read.saturating_add(buf.len());
+        self.flash.read(addr, buf)
+    }
+
+    fn write(&mut self, addr: u32, data: &mut [u8]) -> Result<(), Self::Error> {
+        self.stats.write = self.stats.write.saturating_add(data.len());
+        self.flash.write(addr, data)
+    }
+
+    fn erase(&mut self, addr: u32) -> Result<(), Self::Error> {
+        self.stats.erase = self.stats.erase.saturating_add(1);
+        self.flash.erase(addr)
+    }
+}
