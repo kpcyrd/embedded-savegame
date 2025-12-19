@@ -15,19 +15,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
-name = "cfg-if"
-version = "1.0.4"
+name = "djb2"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
-
-[[package]]
-name = "crc32fast"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
-dependencies = [
- "cfg-if",
-]
+checksum = "8eb8886ecca3498d7a9dab291fc7c9dc293c7b35a74d60065a9ba0d510f5d39f"
 
 [[package]]
 name = "eeprom24x"
@@ -60,7 +51,7 @@ name = "embedded-savegame"
 version = "0.2.0"
 dependencies = [
  "arrayref",
- "crc32fast",
+ "djb2",
  "eeprom24x",
  "embedded-hal 0.2.7",
  "w25q",

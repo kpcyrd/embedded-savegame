@@ -110,12 +110,15 @@ mod tests {
     #[test]
     fn test_slot_to_bytes() {
         let slot = Slot::create(0, Chksum::zero(), b"hello");
-        assert_eq!(slot.to_bytes(), [22, 59, 69, 53, 0, 0, 0, 5, 0, 0, 0, 0]);
+        assert_eq!(
+            slot.to_bytes(),
+            [116, 186, 120, 103, 0, 0, 0, 5, 0, 0, 0, 0]
+        );
 
         let append = Slot::create(1, slot.chksum, b"world");
         assert_eq!(
             append.to_bytes(),
-            [95, 165, 74, 224, 0, 0, 0, 5, 22, 59, 69, 53]
+            [21, 165, 57, 22, 0, 0, 0, 5, 116, 186, 120, 103]
         );
     }
 

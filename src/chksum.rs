@@ -11,23 +11,22 @@ impl Chksum {
         Self(0)
     }
 
-    pub fn hash(prev: Chksum, data: &[u8]) -> Self {
-        let mut hasher = crc32fast::Hasher::new();
-        hasher.update(&prev.to_bytes());
-        hasher.update(data);
-        Self(hasher.finalize() & CHKSUM_MASK)
+    pub const fn hash(prev: Chksum, data: &[u8]) -> Self {
+        let hash = djb2::hash(&prev.to_bytes());
+        let hash = djb2::hash_with_initial(hash, data);
+        Self(hash & CHKSUM_MASK)
     }
 
-    pub fn is_valid(&self) -> bool {
+    pub const fn is_valid(&self) -> bool {
         let value = self.0 & !CHKSUM_MASK;
         value == 0
     }
 
-    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+    pub const fn to_bytes(&self) -> [u8; Self::SIZE] {
         self.0.to_be_bytes()
     }
 
-    pub fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
+    pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
         Self(u32::from_be_bytes(bytes))
     }
 }
@@ -40,7 +39,7 @@ mod tests {
     fn test_chksum() {
         let data = b"hello world";
         let chksum = Chksum::hash(Chksum::zero(), data);
-        assert_eq!(chksum, Chksum(824091534));
+        assert_eq!(chksum, Chksum(646036933));
         assert!(chksum.is_valid());
     }
 
