@@ -15,11 +15,13 @@ where
 
     fn write(&mut self, addr: u32, data: &mut [u8]) -> Result<(), Self::Error> {
         self.write_page(addr, data)?;
+        while self.read_current_address().is_err() {}
         Ok(())
     }
 
     fn erase(&mut self, addr: u32) -> Result<(), Self::Error> {
         self.write_byte(addr, 0xFF)?;
+        while self.read_current_address().is_err() {}
         Ok(())
     }
 }
