@@ -99,6 +99,8 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
     }
 
     pub fn erase_all(&mut self) -> Result<(), F::Error> {
+        self.idx = 0;
+        self.prev = Chksum::zero();
         self.flash.erase_all(SLOT_COUNT)
     }
 
