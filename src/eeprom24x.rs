@@ -20,8 +20,10 @@ where
     }
 
     fn erase(&mut self, addr: u32) -> Result<(), Self::Error> {
-        self.write_byte(addr, 0xFF)?;
-        while self.read_current_address().is_err() {}
+        if self.read_byte(addr)? != 0xFF {
+            self.write_byte(addr, 0xFF)?;
+            while self.read_current_address().is_err() {}
+        }
         Ok(())
     }
 }
