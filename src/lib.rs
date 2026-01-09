@@ -73,16 +73,13 @@ impl Slot {
 
     pub fn to_bytes(&self) -> [u8; Self::HEADER_SIZE] {
         let mut buf = [0u8; Self::HEADER_SIZE];
-        let slice = &mut buf[..];
 
-        let (dest, slice) = slice.split_at_mut(Chksum::SIZE);
-        dest.copy_from_slice(&self.chksum.to_bytes());
+        let (chksum, len, prev) =
+            arrayref::mut_array_refs![&mut buf, Chksum::SIZE, LENGTH_SIZE, Chksum::SIZE];
 
-        let (dest, slice) = slice.split_at_mut(LENGTH_SIZE);
-        dest.copy_from_slice(&self.len.to_be_bytes());
-
-        let (dest, _slice) = slice.split_at_mut(Chksum::SIZE);
-        dest.copy_from_slice(&self.prev.to_bytes());
+        chksum.copy_from_slice(&self.chksum.to_bytes());
+        len.copy_from_slice(&self.len.to_be_bytes());
+        prev.copy_from_slice(&self.prev.to_bytes());
 
         buf
     }

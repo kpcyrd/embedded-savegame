@@ -48,7 +48,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
 
     fn scan_slot(&mut self, idx: usize) -> Result<Option<Slot>, F::Error> {
         let mut buf = [0u8; Slot::HEADER_SIZE];
-        let (head, tail) = buf.split_at_mut(1);
+        let (head, tail) = arrayref::mut_array_refs![&mut buf, 1, Slot::HEADER_SIZE - 1];
 
         // Read first byte for sanity check to allow early skip
         let addr = self.addr(idx);
