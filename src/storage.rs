@@ -131,9 +131,31 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
             remaining_space = SLOT_SIZE - 1;
         }
 
-        // TODO: validate checksum
-
         Ok(Some(data))
+    }
+
+    /// Read a static-sized savegame directly from a single slot
+    ///
+    /// This is useful when you need a more lightweight read operation
+    pub fn read_static<'a, const SIZE: usize>(
+        &mut self,
+        idx: usize,
+        buf: &'a mut [u8; SIZE],
+    ) -> Result<(), F::Error> {
+        // Sanity check
+        const {
+            let space_available = SLOT_SIZE
+                .checked_sub(Slot::HEADER_SIZE)
+                .expect("Invalid SLOT_SIZE, Slot::HEADER_SIZE doesn't fit");
+            assert!(SIZE <= space_available);
+        }
+
+        // Calculate address behind slot header
+        let addr = self.addr(idx).saturating_add(Slot::HEADER_SIZE as u32);
+        // Read data directly into the buffer in one go
+        self.flash.read(addr, buf)?;
+
+        Ok(())
     }
 
     pub fn write(
