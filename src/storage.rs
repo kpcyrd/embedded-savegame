@@ -1,21 +1,52 @@
+//! Flash storage abstraction and savegame management
+//!
+//! This module provides the core storage functionality, including:
+//! - The [`Flash`] trait for hardware abstraction
+//! - The [`Storage`] type for managing savegames
+//! - Methods for reading, writing, and scanning savegames
+
 use crate::{
     Slot,
     chksum::{self, Chksum},
 };
 use core::fmt;
 
+/// Trait for flash memory operations
+///
+/// Implement this trait for your flash hardware to use with [`Storage`].
+/// The trait is generic over the error type to support different hardware backends.
 pub trait Flash {
+    /// The error type for flash operations
     type Error: fmt::Debug;
 
+    /// Read data from flash memory at the specified byte address
+    ///
+    /// # Arguments
+    ///
+    /// * `addr` - The byte address to read from
+    /// * `buf` - The buffer to read data into
     fn read(&mut self, addr: u32, buf: &mut [u8]) -> Result<(), Self::Error>;
 
-    // XXX: The w25q crate requires data to be mutable for write operations
+    /// Write data to flash memory at the specified address
+    ///
+    /// Note: The data parameter is mutable because some flash drivers (e.g., w25q)
+    /// require mutable access during write operations.
     fn write(&mut self, addr: u32, data: &mut [u8]) -> Result<(), Self::Error>;
 
+    /// Erase a flash sector or replace first byte to invalidate a slot
+    ///
+    /// For EEPROM, this typically sets the first byte to 0xFF.
+    /// For NOR flash, this erases an entire sector.
     fn erase(&mut self, addr: u32) -> Result<(), Self::Error>;
 
-    /// Some flash chips have a better way to do bulk erase
-    /// Default implementation erases all sectors one by one
+    /// Bulk erase multiple slots/sectors
+    ///
+    /// Some flash chips have optimized bulk erase operations.
+    /// The default implementation erases sectors one by one.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - The number of slots to erase
     fn erase_all(&mut self, count: usize) -> Result<(), Self::Error> {
         for idx in 0..count {
             self.erase(idx as u32)?;
@@ -24,6 +55,29 @@ pub trait Flash {
     }
 }
 
+/// Savegame storage manager
+///
+/// Manages reading and writing savegames to flash memory with power-fail safety
+/// and wear leveling. The storage area is divided into fixed-size slots, and
+/// savegames are written sequentially across slots with automatic wrap-around.
+///
+/// # Type Parameters
+///
+/// * `F` - The flash hardware type implementing [`Flash`]
+/// * `SLOT_SIZE` - The size of each slot in bytes: this must match your flash's
+///   underlying sector/page size
+/// * `SLOT_COUNT` - The total number of slots available
+///
+/// # Power-fail Safety
+///
+/// Writes are atomic at the slot level. The slot header is written last, so a
+/// power failure during write leaves the previous savegame intact. The scanner
+/// follows the checksum chain to find the most recent complete savegame.
+///
+/// # Wear Leveling
+///
+/// Savegames are written sequentially with wrap-around, distributing writes
+/// evenly across all slots to maximize flash memory lifespan.
 #[derive(Debug)]
 pub struct Storage<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> {
     flash: F,
@@ -32,8 +86,16 @@ pub struct Storage<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> {
 }
 
 impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_SIZE, SLOT_COUNT> {
+    /// The total size of the storage area in bytes
+    ///
+    /// This can't be fully used for data storage, as some bytes are used
+    /// for slot metadata and headers.
     pub const SPACE: u32 = SLOT_SIZE as u32 * SLOT_COUNT as u32;
 
+    /// Create a new storage manager
+    ///
+    /// This is a cheap operation and does not initialize or scan the flash
+    /// memory.
     pub const fn new(flash: F) -> Self {
         Self {
             flash,
@@ -42,10 +104,12 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         }
     }
 
+    /// Calculate the flash memory address of a slot by its index
     const fn addr(&self, idx: usize) -> u32 {
         ((idx % SLOT_COUNT) * SLOT_SIZE) as u32
     }
 
+    /// Probe a single slot for a valid savegame header
     fn scan_slot(&mut self, idx: usize) -> Result<Option<Slot>, F::Error> {
         let mut buf = [0u8; Slot::HEADER_SIZE];
         let (head, tail) = arrayref::mut_array_refs![&mut buf, 1, Slot::HEADER_SIZE - 1];
@@ -68,6 +132,11 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         Ok(slot)
     }
 
+    /// Scan all slots for the most recent valid savegame
+    ///
+    /// If found, updates internal state to point to the next free slot. If no
+    /// valid savegame is found, internal state is unchanged and `Ok(None)` is
+    /// returned.
     pub fn scan(&mut self) -> Result<Option<Slot>, F::Error> {
         let mut current: Option<Slot> = None;
 
@@ -93,17 +162,33 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         Ok(current)
     }
 
+    /// Mark a slot as unused (by partially or fully erasing it)
+    ///
+    /// This may not securely erase all data (depending on the flash chip), but
+    /// prevents the slot from being detected as a valid savegame.
     pub fn erase(&mut self, idx: usize) -> Result<(), F::Error> {
         self.flash.erase(self.addr(idx))?;
         Ok(())
     }
 
+    /// Mark all slots as unused
+    ///
+    /// This may not securely erase data (depending on the flash chip), but
+    /// prevents them from being detected as valid savegames.
+    ///
+    /// On some flash chips, this may be optimized to a bulk erase operation.
     pub fn erase_all(&mut self) -> Result<(), F::Error> {
         self.idx = 0;
         self.prev = Chksum::zero();
         self.flash.erase_all(SLOT_COUNT)
     }
 
+    /// Read a savegame from a specific slot index
+    ///
+    /// The slot index must point to the first slot of the savegame. This method reads
+    /// the header to determine the savegame length. If the buffer is not large enough
+    /// to hold the entire savegame, `Ok(None)` is returned. The savegame may span
+    /// multiple slots.
     pub fn read<'a>(
         &mut self,
         mut idx: usize,
@@ -136,7 +221,9 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
 
     /// Read a static-sized savegame directly from a single slot
     ///
-    /// This is useful when you need a more lightweight read operation
+    /// This is a more lightweight read operation for fixed-size data that fits
+    /// within a single slot (excluding the header). The size must not exceed
+    /// `SLOT_SIZE - Slot::HEADER_SIZE`. The embedded length field is ignored.
     pub fn read_static<'a, const SIZE: usize>(
         &mut self,
         idx: usize,
@@ -158,6 +245,11 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         Ok(())
     }
 
+    /// Write a savegame starting at a specific slot index
+    ///
+    /// If the data doesn't fit in a single slot, this method automatically continues
+    /// to subsequent slots, erasing them as needed. Returns the next free slot index
+    /// and the checksum of the savegame that was just written.
     pub fn write(
         &mut self,
         mut idx: usize,
@@ -198,6 +290,10 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         Ok((idx, slot.chksum))
     }
 
+    /// Append a new savegame at the next free slot
+    ///
+    /// The new savegame indicates it's an update to the previous savegame,
+    /// when fully written the scanner should find it as the most recent savegame.
     pub fn append(&mut self, data: &mut [u8]) -> Result<(), F::Error> {
         let (idx, chksum) = self.write(self.idx, self.prev, data)?;
         self.idx = idx;

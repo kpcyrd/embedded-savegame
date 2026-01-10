@@ -1,8 +1,16 @@
+//! W25Q NOR flash support
+//!
+//! This module provides a [`Flash`](crate::storage::Flash) implementation for W25Q series NOR flash chips.
+//! Available with the `w25q` feature.
+//!
+//! Supports flash chips from the W25Q series using the `w25q` crate's driver.
+
 use crate::storage::Flash;
 use core::fmt;
 use eh0::blocking::spi::Transfer;
 use eh0::digital::v2::OutputPin;
 
+/// Flash trait implementation for W25Q series NOR flash chips
 impl<SPI: Transfer<u8>, CS: OutputPin> Flash for w25q::series25::Flash<SPI, CS>
 where
     SPI::Error: fmt::Debug,
