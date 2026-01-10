@@ -98,7 +98,7 @@ impl Slot {
     /// * `idx` - The slot index where this will be stored
     /// * `prev` - The checksum of the previous savegame (or zero for first savegame)
     /// * `data` - The savegame data to store
-    pub fn create(idx: usize, prev: Chksum, data: &[u8]) -> Self {
+    pub const fn create(idx: usize, prev: Chksum, data: &[u8]) -> Self {
         let chksum = Chksum::hash(prev, data);
         let len = data.len() as u32;
         Self {
@@ -113,7 +113,7 @@ impl Slot {
     ///
     /// A slot is valid if both its checksum and previous checksum have the correct format
     /// (most significant bit is zero).
-    pub fn is_valid(&self) -> bool {
+    pub const fn is_valid(&self) -> bool {
         self.chksum.is_valid() && self.prev.is_valid()
     }
 
