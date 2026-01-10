@@ -224,10 +224,10 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
     /// This is a more lightweight read operation for fixed-size data that fits
     /// within a single slot (excluding the header). The size must not exceed
     /// `SLOT_SIZE - Slot::HEADER_SIZE`. The embedded length field is ignored.
-    pub fn read_static<'a, const SIZE: usize>(
+    pub fn read_static<const SIZE: usize>(
         &mut self,
         idx: usize,
-        buf: &'a mut [u8; SIZE],
+        buf: &mut [u8; SIZE],
     ) -> Result<(), F::Error> {
         // Sanity check
         const {
