@@ -290,12 +290,63 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         Ok((idx, slot.chksum))
     }
 
+    /// Write a static-sized savegame directly into a single slot
+    ///
+    /// This is a more lightweight write operation for fixed-size data that fits
+    /// within a single slot (excluding the header). The size must not exceed
+    /// `SLOT_SIZE - Slot::HEADER_SIZE`.
+    pub fn write_static<const SIZE: usize>(
+        &mut self,
+        idx: usize,
+        prev: Chksum,
+        data: &mut [u8; SIZE],
+    ) -> Result<(usize, Chksum), F::Error> {
+        // Sanity check
+        const {
+            let space_available = SLOT_SIZE
+                .checked_sub(Slot::HEADER_SIZE)
+                .expect("Invalid SLOT_SIZE, Slot::HEADER_SIZE doesn't fit");
+            assert!(SIZE <= space_available);
+        }
+
+        // Prepare slot header
+        let slot = Slot::create(idx, prev, data);
+        let slot_addr = self.addr(idx);
+        self.flash.erase(slot_addr)?;
+
+        // Write data directly after header
+        let addr = slot_addr.saturating_add(Slot::HEADER_SIZE as u32);
+        self.flash.write(addr, data)?;
+
+        // Write header last, to finalize the slot
+        // The last field is `prev`, marking the previous slot as outdated
+        let mut bytes = slot.to_bytes();
+        self.flash.write(slot_addr, &mut bytes)?;
+
+        Ok((idx, slot.chksum))
+    }
+
     /// Append a new savegame at the next free slot
     ///
     /// The new savegame indicates it's an update to the previous savegame,
     /// when fully written the scanner should find it as the most recent savegame.
     pub fn append(&mut self, data: &mut [u8]) -> Result<(), F::Error> {
         let (idx, chksum) = self.write(self.idx, self.prev, data)?;
+        self.idx = idx;
+        self.prev = chksum;
+        Ok(())
+    }
+
+    /// Append a static-sized savegame into the next free slot
+    ///
+    /// This is a more lightweight write operation for fixed-size data that fits
+    /// within a single slot (excluding the header). The size must not exceed
+    /// `SLOT_SIZE - Slot::HEADER_SIZE`.
+    pub fn append_static<const SIZE: usize>(
+        &mut self,
+        data: &mut [u8; SIZE],
+    ) -> Result<(), F::Error> {
+        let (idx, chksum) = self.write_static(self.idx, self.prev, data)?;
         self.idx = idx;
         self.prev = chksum;
         Ok(())
