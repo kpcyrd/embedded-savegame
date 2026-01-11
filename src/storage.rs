@@ -361,6 +361,14 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         self.idx = 0;
         self.prev = Chksum::zero();
     }
+
+    /// Consume the storage manager and return the underlying flash device
+    ///
+    /// This can be used to retrieve the flash device after all storage operations
+    /// are complete.
+    pub fn into_inner(self) -> F {
+        self.flash
+    }
 }
 
 #[cfg(test)]
