@@ -14,7 +14,7 @@ use core::convert::Infallible;
 ///
 /// Simulates EEPROM-like flash where individual bytes can be written.
 /// Initialized with all bytes set to 0xFF (erased state).
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct MockFlash<const SIZE: usize> {
     data: [u8; SIZE],
 }
@@ -59,7 +59,7 @@ impl<const SIZE: usize> Flash for MockFlash<SIZE> {
 /// Simulates NOR flash where writes can only set bits from 1 to 0, and entire
 /// sectors must be erased to set bits back to 1. This more accurately models
 /// real NOR flash behavior.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct SectorMockFlash<const SECTOR_SIZE: usize, const SECTOR_COUNT: usize> {
     data: [[u8; SECTOR_SIZE]; SECTOR_COUNT],
 }

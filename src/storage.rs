@@ -297,7 +297,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
     /// `SLOT_SIZE - Slot::HEADER_SIZE`.
     pub fn write_static<const SIZE: usize>(
         &mut self,
-        idx: usize,
+        mut idx: usize,
         prev: Chksum,
         data: &mut [u8; SIZE],
     ) -> Result<(usize, Chksum), F::Error> {
@@ -317,6 +317,7 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         // Write data directly after header
         let addr = slot_addr.saturating_add(Slot::HEADER_SIZE as u32);
         self.flash.write(addr, data)?;
+        idx = idx.saturating_add(1) % SLOT_COUNT;
 
         // Write header last, to finalize the slot
         // The last field is `prev`, marking the previous slot as outdated
@@ -418,6 +419,27 @@ mod tests {
 
         let mut data = *b"hello world";
         storage.append(&mut data);
+
+        let mut buf = [0u8; Slot::HEADER_SIZE];
+        storage.flash.read(0, &mut buf);
+        let slot = Slot::from_bytes(0, buf);
+        assert_eq!(
+            slot,
+            Slot {
+                idx: 0,
+                chksum: Chksum::hash(Chksum::zero(), &data),
+                len: data.len() as u32,
+                prev: Chksum::zero(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_storage_write_static() {
+        let mut storage = mock_storage();
+
+        let mut data = *b"hello world";
+        storage.append_static(&mut data);
 
         let mut buf = [0u8; Slot::HEADER_SIZE];
         storage.flash.read(0, &mut buf);
@@ -658,5 +680,113 @@ mod tests {
                 erase: 3,
             }
         );
+    }
+
+    fn test_append_three_times_then_scan<F: Flash<Error = Infallible>>(
+        storage: &mut Storage<F, SLOT_SIZE, SLOT_COUNT>,
+    ) {
+        let mut data = *b"first";
+        storage.append(&mut data);
+        let mut data = *b"second";
+        storage.append(&mut data);
+        let mut data = *b"third";
+        storage.append(&mut data);
+
+        let slot = storage.scan().unwrap();
+        assert_eq!(
+            slot,
+            Some(Slot {
+                idx: 2,
+                chksum: Chksum::hash(
+                    Chksum::hash(Chksum::hash(Chksum::zero(), b"first"), b"second",),
+                    b"third",
+                ),
+                len: 5,
+                prev: Chksum::hash(Chksum::hash(Chksum::zero(), b"first"), b"second",),
+            })
+        );
+        assert_eq!(storage.idx, 3);
+        assert_eq!(
+            storage.prev,
+            Chksum::hash(
+                Chksum::hash(Chksum::hash(Chksum::zero(), b"first"), b"second",),
+                b"third",
+            )
+        );
+    }
+
+    #[test]
+    fn test_at24cxx_append_three_times_then_scan() {
+        let mut storage = mock_storage();
+        test_append_three_times_then_scan(&mut storage);
+    }
+
+    #[test]
+    fn test_w25qxx_append_three_times_then_scan() {
+        let mut storage = mock_sector_storage();
+        test_append_three_times_then_scan(&mut storage);
+    }
+
+    fn test_append_static_three_times_then_scan<F: Flash<Error = Infallible>>(
+        storage: &mut Storage<F, SLOT_SIZE, SLOT_COUNT>,
+    ) {
+        let mut data = *b"first";
+        storage.append_static(&mut data);
+        let mut data = *b"second";
+        storage.append_static(&mut data);
+        let mut data = *b"third";
+        storage.append_static(&mut data);
+
+        let slot = storage.scan().unwrap();
+        assert_eq!(
+            slot,
+            Some(Slot {
+                idx: 2,
+                chksum: Chksum::hash(
+                    Chksum::hash(Chksum::hash(Chksum::zero(), b"first"), b"second",),
+                    b"third",
+                ),
+                len: 5,
+                prev: Chksum::hash(Chksum::hash(Chksum::zero(), b"first"), b"second",),
+            })
+        );
+        assert_eq!(storage.idx, 3);
+        assert_eq!(
+            storage.prev,
+            Chksum::hash(
+                Chksum::hash(Chksum::hash(Chksum::zero(), b"first"), b"second",),
+                b"third",
+            )
+        );
+    }
+
+    #[test]
+    fn test_at24cxx_append_static_three_times_then_scan() {
+        let mut storage = mock_storage();
+        test_append_static_three_times_then_scan(&mut storage);
+    }
+
+    #[test]
+    fn test_w25qxx_append_static_three_times_then_scan() {
+        let mut storage = mock_sector_storage();
+        test_append_static_three_times_then_scan(&mut storage);
+    }
+
+    #[test]
+    fn test_at24cxx_static_non_static_append_equality() {
+        let mut storage_non_static_writes = mock_storage();
+        test_append_three_times_then_scan(&mut storage_non_static_writes);
+        let mut storage_static_writes = mock_storage();
+        test_append_static_three_times_then_scan(&mut storage_static_writes);
+        assert_eq!(storage_non_static_writes.flash, storage_static_writes.flash);
+    }
+
+    #[test]
+    fn test_w25qxx_static_non_static_append_equality() {
+        let mut storage_non_static_writes = mock_sector_storage();
+        test_append_three_times_then_scan(&mut storage_non_static_writes);
+        let mut storage_static_writes = mock_sector_storage();
+        test_append_static_three_times_then_scan(&mut storage_static_writes);
+        assert_eq!(storage_non_static_writes.flash, storage_static_writes.flash);
     }
 }
