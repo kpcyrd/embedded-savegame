@@ -352,6 +352,15 @@ impl<F: Flash, const SLOT_SIZE: usize, const SLOT_COUNT: usize> Storage<F, SLOT_
         self.prev = chksum;
         Ok(())
     }
+
+    /// Reset internal state to initial values
+    ///
+    /// This does not erase any data, but causes the next write to start at slot 0
+    /// with a zeroed previous checksum.
+    pub const fn reset(&mut self) {
+        self.idx = 0;
+        self.prev = Chksum::zero();
+    }
 }
 
 #[cfg(test)]
